@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sobics Game</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        canvas {
+            border: 1px solid black;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="flex justify-center items-center h-screen">
+        <canvas id="vaszon" width="400" height="600"></canvas>
+        <div id="message"
+            style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(255, 255, 255, 0.8); padding: 10px; border-radius: 5px;">
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('vaszon');
+        const ctx = canvas.getContext('2d');
+
+        const blockSize = 40;
+        const rowItemsMaxLength = 15;
+        const blockColors = ['red', 'blue', 'green', 'yellow', 'orange'];
+        const gatoStartY = 350;
+
+        let columns = [];
+
+        for (let i = 0; i < rowItemsMaxLength; i++) {
+            let col = [];
+            columns[i] = [];
+            for (let j = 0; j < rowItemsMaxLength; j++) {
+                columns[i][j] = null
+            }
+            columns[i][0] = blockColors[Math.floor(Math.random() * blockColors.length)];
+        }
+
+        let highlightedColumn = -1;
+
+        let blockInHand = null;
+
+        function drawBlock(x, y, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, blockSize, blockSize);
+            ctx.strokeStyle = 'black';
+            ctx.strokeRect(x, y, blockSize, blockSize);
+        }
+
+        function drawHighlight(x, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, 0, blockSize, canvas.height);
+            if (blockInHand != null) {
+                ctx.fillStyle = blockInHand;
+                ctx.fillRect(x, gatoStartY - blockSize, blockSize, blockSize);
+            }
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function update() {
+            clearCanvas();
+            columns.forEach((col, colIndex) => {
+                col.forEach((block, blockIndex) => {
+                    if (block != null) drawBlock(colIndex * blockSize, blockIndex * blockSize, block);
+                });
+            });
+            if (highlightedColumn !== -1) {
+                drawHighlight(highlightedColumn * blockSize, 'rgba(255, 255, 0, 0.5)');
+            }
+            drawGato();
+        }
+
+        const gatoImg = new Image();
+        gatoImg.src = 'gato_small.png';
+        let gatoMouseX = 0;
+        function drawGato() {
+            ctx.clearRect(0, gatoStartY, canvas.width, canvas.height);
+            ctx.drawImage(gatoImg, gatoMouseX - gatoImg.width / 2, gatoStartY);
+            requestAnimationFrame(drawGato);
+        }
+
+        function generateRow() {
+            columns.forEach((col, colIndex) => {
+                col = moveElementsRight(col);
+                col[0] = blockColors[Math.floor(Math.random() * blockColors.length)];
+            });
+        }
+
+        function moveElementsRight(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                if (array[i - 1] !== null) {
+                    array[i] = array[i - 1];
+                    array[i - 1] = null;
+                }
+            }
+            return array;
+        }
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === '1') {
+                generateRow();
+            }
+        });
+
+        canvas.addEventListener('mousemove', function (event) {
+            gatoMouseX = event.clientX - canvas.getBoundingClientRect().left;
+            const mouseX = event.clientX - canvas.offsetLeft;
+            highlightedColumn = Math.floor(mouseX / blockSize);
+        });
+
+        canvas.addEventListener('click', function (event) {
+            if (highlightedColumn !== -1 && columns[highlightedColumn].length > 0) {
+                if (blockInHand == null) {
+                    // pick
+                    const lastNotNullIndex = getLastNonNullIndex(columns[highlightedColumn]);
+                    blockInHand = columns[highlightedColumn][lastNotNullIndex];
+                    columns[highlightedColumn][lastNotNullIndex] = null;
+                    checkFourOrMoreConnected();
+
+                    clearGapsInColumns();
+                } else {
+                    // put
+                    const firstNullIndex = getFirstNullElementIndex(columns[highlightedColumn]);
+                    columns[highlightedColumn][firstNullIndex] = blockInHand;
+                    blockInHand = null;
+
+                    checkFourOrMoreConnected();
+
+                    clearGapsInColumns();
+
+                    shiftedCol = moveElementsRight(columns[highlightedColumn]);
+                    shiftedCol[0] = blockColors[Math.floor(Math.random() * blockColors.length)];
+
+                    columns[highlightedColumn] = shiftedCol;
+                }
+            }
+        });
+
+        function clearGapsInColumns() {
+            for (let col = 0; col < columns.length; col++) {
+                let gapIndices = [];
+                for (let row = 0; row < columns[col].length; row++) {
+                    if (columns[col][row] === null) {
+                        gapIndices.push(row);
+                    } else if (gapIndices.length > 0) {
+                        const block = columns[col][row];
+                        columns[col][row] = null;
+                        const gapIndex = gapIndices.shift();
+                        columns[col][gapIndex] = block;
+                        gapIndices.push(row);
+                    }
+                }
+            }
+        }
+
+        function getLastNonNullIndex(arr) {
+            for (let i = arr.length - 1; i >= 0; i--) {
+                if (arr[i] !== null) {
+                    return i;
+                }
+            }
+            return null;
+        }
+
+        function getFirstNullElementIndex(arr) {
+            for (let i = 0; i < arr.length; i++) {
+                if (arr[i] === null) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        function checkFourOrMoreConnected() {
+            for (let col = 0; col < columns.length; col++) {
+                for (let row = 0; row < columns[col].length; row++) {
+                    if (columns[col][row] !== null) {
+                        let countHorizontal = 1;
+                        for (let i = 1; col + i < columns.length && columns[col + i][row] === columns[col][row]; i++) {
+                            countHorizontal++;
+                        }
+                        let countVertical = 1;
+                        for (let i = 1; row + i < columns[col].length && columns[col][row + i] === columns[col][row]; i++) {
+                            countVertical++;
+                        }
+                        let countDiagonal1 = 1;
+                        for (let i = 1; col + i < columns.length && row + i < columns[col].length && columns[col + i][row + i] === columns[col][row]; i++) {
+                            countDiagonal1++;
+                        }
+                        let countDiagonal2 = 1;
+                        for (let i = 1; col + i < columns.length && row - i >= 0 && columns[col + i][row - i] === columns[col][row]; i++) {
+                            countDiagonal2++;
+                        }
+                        if (countHorizontal >= 4 || countVertical >= 4 || countDiagonal1 >= 4 || countDiagonal2 >= 4) {
+                            showMessage("1 mill points jo");
+
+                            for (let i = 0; i < countHorizontal; i++) {
+                                columns[col + i][row] = null;
+                            }
+                            for (let i = 0; i < countVertical; i++) {
+                                columns[col][row + i] = null;
+                            }
+                            for (let i = 0; i < countDiagonal1; i++) {
+                                columns[col + i][row + i] = null;
+                            }
+                            for (let i = 0; i < countDiagonal2; i++) {
+                                columns[col + i][row - i] = null;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function showMessage(message) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.textContent = message;
+            messageDiv.style.display = 'block';
+
+            // Hide message after 3 seconds
+            setTimeout(function () {
+                messageDiv.style.display = 'none';
+            }, 3000);
+        }
+
+
+        setInterval(update, 1000 / 60);
+    </script>
+</body>
+
+</html>
