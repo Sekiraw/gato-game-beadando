@@ -17,7 +17,16 @@
 
 <body>
     <div class="flex justify-center items-center h-screen">
-        <canvas id="vaszon" width="400" height="600"></canvas>
+        <div class="flex flex-col items-center">
+            <div class="flex flex-row gap-2">
+                Points: <p id="points" class="bold">0</p>
+            </div>
+            <div id="timer">
+                10
+            </div>
+            <canvas id="vaszon" width="400" height="600"></canvas>
+            <button id="resetButton">Reset</button>
+        </div>
         <div id="message"
             style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: rgba(255, 255, 255, 0.8); padding: 10px; border-radius: 5px;">
         </div>
@@ -26,15 +35,25 @@
     <script>
         const canvas = document.getElementById('vaszon');
         const ctx = canvas.getContext('2d');
+        const resetButton = document.getElementById('resetButton');
+        const pointsElem = document.getElementById('points');
+        let points = 0;
 
         const blockSize = 40;
         const rowItemsMaxLength = 15;
+        const maxCols = 10;
         const blockColors = ['red', 'blue', 'green', 'yellow', 'orange'];
-        const gatoStartY = 350;
+        const gatoStartY = 360;
+
+        const timeMax = 10
+        let timeLeft = timeMax;
+        const timerDisplay = document.getElementById('timer');
+
+        let gameOver = false;
 
         let columns = [];
 
-        for (let i = 0; i < rowItemsMaxLength; i++) {
+        for (let i = 0; i < maxCols; i++) {
             let col = [];
             columns[i] = [];
             for (let j = 0; j < rowItemsMaxLength; j++) {
@@ -46,6 +65,8 @@
         let highlightedColumn = -1;
 
         let blockInHand = null;
+        let countInHand = 0;
+        let multipleInHand = false;
 
         function drawBlock(x, y, color) {
             ctx.fillStyle = color;
@@ -59,7 +80,19 @@
             ctx.fillRect(x, 0, blockSize, canvas.height);
             if (blockInHand != null) {
                 ctx.fillStyle = blockInHand;
-                ctx.fillRect(x, gatoStartY - blockSize, blockSize, blockSize);
+                ctx.fillRect(x, gatoStartY, blockSize, blockSize);
+
+                if (multipleInHand) {
+                    ctx.fillStyle = 'black';
+                    ctx.font = '20px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+
+                    const textX = x + blockSize / 2;
+                    const textY = gatoStartY + blockSize / 2;
+
+                    ctx.fillText(countInHand, textX, textY);
+                }
             }
         }
 
@@ -68,16 +101,40 @@
         }
 
         function update() {
-            clearCanvas();
-            columns.forEach((col, colIndex) => {
-                col.forEach((block, blockIndex) => {
-                    if (block != null) drawBlock(colIndex * blockSize, blockIndex * blockSize, block);
+            if (!gameOver) {
+                clearCanvas();
+                columns.forEach((col, colIndex) => {
+                    col.forEach((block, blockIndex) => {
+                        if (block != null) drawBlock(colIndex * blockSize, blockIndex * blockSize, block);
+                    });
                 });
-            });
-            if (highlightedColumn !== -1) {
-                drawHighlight(highlightedColumn * blockSize, 'rgba(255, 255, 0, 0.5)');
+                drawGato();
+                if (highlightedColumn !== -1) {
+                    drawHighlight(highlightedColumn * blockSize, 'rgba(255, 255, 0, 0.5)');
+                }
             }
-            drawGato();
+            if (gameOver) {
+                drawGameOver();
+            }
+        }
+
+        function checkLose() {
+            columns.forEach((col) => {
+                let notNullCount = 0;
+                col.forEach((block) => {
+                    if (block != null) notNullCount++;
+                });
+                if (notNullCount > 9) {
+                    gameOver = true;
+                }
+            });
+        }
+
+        function drawGameOver() {
+            ctx.fillStyle = 'red';
+            ctx.font = '30px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2);
         }
 
         const gatoImg = new Image();
@@ -85,8 +142,7 @@
         let gatoMouseX = 0;
         function drawGato() {
             ctx.clearRect(0, gatoStartY, canvas.width, canvas.height);
-            ctx.drawImage(gatoImg, gatoMouseX - gatoImg.width / 2, gatoStartY);
-            requestAnimationFrame(drawGato);
+            ctx.drawImage(gatoImg, (gatoMouseX - gatoImg.width / 2) - blockSize / 2, gatoStartY);
         }
 
         function generateRow() {
@@ -94,6 +150,9 @@
                 col = moveElementsRight(col);
                 col[0] = blockColors[Math.floor(Math.random() * blockColors.length)];
             });
+            checkFourOrMoreConnected();
+            clearGapsInColumns();
+            checkLose();
         }
 
         function moveElementsRight(array) {
@@ -113,37 +172,100 @@
         });
 
         canvas.addEventListener('mousemove', function (event) {
-            gatoMouseX = event.clientX - canvas.getBoundingClientRect().left;
-            const mouseX = event.clientX - canvas.offsetLeft;
-            highlightedColumn = Math.floor(mouseX / blockSize);
+            if (!gameOver) {
+                gatoMouseX = event.clientX - canvas.getBoundingClientRect().left;
+                const mouseX = event.clientX - canvas.offsetLeft;
+                highlightedColumn = Math.floor(mouseX / blockSize);
+            }
+        });
+
+        resetButton.addEventListener('click', function () {
+            gameOver = false;
+            timeLeft = timeMax;
+            timerDisplay.textContent = timeMax;
+            countdown();
+
+            blockInHand = null;
+            countInHand = 0;
+            multipleInHand = false;
+
+            points = 0;
+
+            columns = [];
+
+            for (let i = 0; i < rowItemsMaxLength; i++) {
+                let col = [];
+                columns[i] = [];
+                for (let j = 0; j < rowItemsMaxLength; j++) {
+                    columns[i][j] = null
+                }
+                columns[i][0] = blockColors[Math.floor(Math.random() * blockColors.length)];
+            }
         });
 
         canvas.addEventListener('click', function (event) {
-            if (highlightedColumn !== -1 && columns[highlightedColumn].length > 0) {
-                if (blockInHand == null) {
-                    // pick
-                    const lastNotNullIndex = getLastNonNullIndex(columns[highlightedColumn]);
-                    blockInHand = columns[highlightedColumn][lastNotNullIndex];
-                    columns[highlightedColumn][lastNotNullIndex] = null;
-                    checkFourOrMoreConnected();
+            if (!gameOver) {
+                if (highlightedColumn !== -1 && columns[highlightedColumn].length > 0) {
+                    if (blockInHand == null) {
+                        // pick
+                        const lastNotNullIndex = getLastNonNullIndex(columns[highlightedColumn]);
 
-                    clearGapsInColumns();
-                } else {
-                    // put
-                    const firstNullIndex = getFirstNullElementIndex(columns[highlightedColumn]);
-                    columns[highlightedColumn][firstNullIndex] = blockInHand;
-                    blockInHand = null;
+                        if (lastNotNullIndex - 1 > -1) {
+                            if (columns[highlightedColumn][lastNotNullIndex] == columns[highlightedColumn][lastNotNullIndex - 1]) {
+                                blockInHand = columns[highlightedColumn][lastNotNullIndex];
 
-                    checkFourOrMoreConnected();
+                                columns[highlightedColumn][lastNotNullIndex] = null;
+                                columns[highlightedColumn][lastNotNullIndex - 1] = null;
+                                multipleInHand = true;
+                                countInHand = 2;
 
-                    clearGapsInColumns();
+                                if (lastNotNullIndex - 2 > -1) {
+                                    if (blockInHand == columns[highlightedColumn][lastNotNullIndex - 2]) {
+                                        countInHand = 3;
+                                        columns[highlightedColumn][lastNotNullIndex - 2] = null;
+                                    }
+                                }
 
-                    shiftedCol = moveElementsRight(columns[highlightedColumn]);
-                    shiftedCol[0] = blockColors[Math.floor(Math.random() * blockColors.length)];
+                                checkFourOrMoreConnected();
 
-                    columns[highlightedColumn] = shiftedCol;
+                                clearGapsInColumns();
+                                return;
+                            }
+                        }
+
+                        blockInHand = columns[highlightedColumn][lastNotNullIndex];
+                        columns[highlightedColumn][lastNotNullIndex] = null;
+
+                        checkFourOrMoreConnected();
+
+                        clearGapsInColumns();
+                    } else {
+                        // put
+                        const firstNullIndex = getFirstNullElementIndex(columns[highlightedColumn]);
+
+                        if (!multipleInHand) {
+                            columns[highlightedColumn][firstNullIndex] = blockInHand;
+                        } else {
+                            for (let i = 0; i < countInHand; i++) {
+                                columns[highlightedColumn][firstNullIndex + i] = blockInHand;
+                            }
+                        }
+                        blockInHand = null;
+                        multipleInHand = false;
+                        countInHand = 0;
+
+                        checkFourOrMoreConnected();
+
+                        clearGapsInColumns();
+
+                        shiftedCol = moveElementsRight(columns[highlightedColumn]);
+                        shiftedCol[0] = blockColors[Math.floor(Math.random() * blockColors.length)];
+
+                        columns[highlightedColumn] = shiftedCol;
+                    }
                 }
             }
+            checkLose();
         });
 
         function clearGapsInColumns() {
@@ -201,8 +323,48 @@
                         for (let i = 1; col + i < columns.length && row - i >= 0 && columns[col + i][row - i] === columns[col][row]; i++) {
                             countDiagonal2++;
                         }
-                        if (countHorizontal >= 4 || countVertical >= 4 || countDiagonal1 >= 4 || countDiagonal2 >= 4) {
-                            showMessage("1 mill points jo");
+                        if (countHorizontal == 4 || countVertical == 4 || countDiagonal1 == 4 || countDiagonal2 == 4) {
+                            showMessage("400");
+                            console.log(points);
+                            points += 400;
+                            console.log(points);
+                            pointsElem.textContent = points;
+
+                            for (let i = 0; i < countHorizontal; i++) {
+                                columns[col + i][row] = null;
+                            }
+                            for (let i = 0; i < countVertical; i++) {
+                                columns[col][row + i] = null;
+                            }
+                            for (let i = 0; i < countDiagonal1; i++) {
+                                columns[col + i][row + i] = null;
+                            }
+                            for (let i = 0; i < countDiagonal2; i++) {
+                                columns[col + i][row - i] = null;
+                            }
+                        }
+                        else if (countHorizontal == 5 || countVertical == 5 || countDiagonal1 == 5 || countDiagonal2 == 5) {
+                            showMessage("500");
+                            points += 500;
+                            pointsElem.textContent = points;
+
+                            for (let i = 0; i < countHorizontal; i++) {
+                                columns[col + i][row] = null;
+                            }
+                            for (let i = 0; i < countVertical; i++) {
+                                columns[col][row + i] = null;
+                            }
+                            for (let i = 0; i < countDiagonal1; i++) {
+                                columns[col + i][row + i] = null;
+                            }
+                            for (let i = 0; i < countDiagonal2; i++) {
+                                columns[col + i][row - i] = null;
+                            }
+                        }
+                        else if (countHorizontal == 6 || countVertical == 6 || countDiagonal1 == 6 || countDiagonal2 == 6) {
+                            showMessage("600");
+                            points += 600;
+                            pointsElem.textContent = points;
 
                             for (let i = 0; i < countHorizontal; i++) {
                                 columns[col + i][row] = null;
@@ -227,12 +389,27 @@
             messageDiv.textContent = message;
             messageDiv.style.display = 'block';
 
-            // Hide message after 3 seconds
             setTimeout(function () {
                 messageDiv.style.display = 'none';
             }, 3000);
         }
 
+        function countdown() {
+            if (!gameOver) {
+                timerDisplay.textContent = timeLeft;
+                if (timeLeft > 0) {
+                    timeLeft -= 1;
+                    setTimeout(countdown, 1000);
+                } else {
+                    generateRow();
+                    timeLeft = timeMax;
+                    timerDisplay.textContent = timeMax;
+                    setTimeout(countdown, 1000);
+                }
+            }
+        }
+
+        countdown();
 
         setInterval(update, 1000 / 60);
     </script>
